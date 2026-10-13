@@ -52,6 +52,9 @@ constraint-dependencies = ["multidict<7.1.0"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "docker: marks tests that require a live Docker daemon (deselect with '-m not docker')",
+]
 
 [tool.ruff]
 line-length = 88
