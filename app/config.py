@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     secret_key: str  # required: the app refuses to start without it
     encryption_key: str = ""  # Fernet key, needed from milestone M3 (secrets)
     data_dir: Path = Path("data")
+    database_url: str | None = None
     base_domain: str = "localhost"
     apps_domain: str = "localhost"
     mail_backend: str = "console"

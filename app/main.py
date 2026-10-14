@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.config import get_settings
+from app.db import dispose_engine
 
 
 @asynccontextmanager
@@ -10,6 +11,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()  # fails fast if SECRET_KEY is missing
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     yield
+    dispose_engine()
 
 
 app = FastAPI(title="Small Cloud", lifespan=lifespan)
