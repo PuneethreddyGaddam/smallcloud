@@ -3,31 +3,40 @@
 from __future__ import annotations
 
 import re
-import secrets
-import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from slugify import slugify
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.code_store import (
+    CodeStoreError,
+    DeploymentExistsError,
+    FileTooLargeError,
+    InvalidContentError,
+    InvalidFilenameError,
+    MAX_FILE_BYTES,
+    MAX_REQUIREMENTS_BYTES,
+    UnsupportedFileTypeError,
+    remove_deployment,
+    save_deployment,
+)
 from app.config import get_settings
 from app.db import get_session
 from app.models import App, AppKind, Deployment, User
+from app.slugs import new_unique_slug
 
 router = APIRouter(prefix="/api", tags=["apps"])
-MAX_DEPLOYMENT_BYTES = 5 * 1024 * 1024
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+$")
 
 
-async def _read_limited(upload: UploadFile, *, remaining: int) -> bytes:
-    """Read an upload while enforcing the combined deployment size limit."""
-    content = await upload.read(remaining + 1)
-    if len(content) > remaining:
+async def _read_limited(upload: UploadFile, *, limit: int) -> bytes:
+    """Read an upload while enforcing its configured size limit."""
+    content = await upload.read(limit + 1)
+    if len(content) > limit:
         raise HTTPException(
             status_code=413,
-            detail="The app and its requirements file must be 5 MB or smaller.",
+            detail="The uploaded file is larger than the allowed limit.",
         )
     return content
 
@@ -47,12 +56,6 @@ def _detect_kind(filename: str, source: bytes) -> AppKind:
     return AppKind.script
 
 
-def _new_slug(name: str) -> str:
-    """Create a readable, collision-resistant slug within the DNS label limit."""
-    stem = slugify(name, max_length=48) or "app"
-    return f"{stem}-{secrets.token_hex(3)}"
-
-
 @router.post("/deploy", status_code=201)
 async def deploy_app(
     request: Request,
@@ -68,7 +71,7 @@ async def deploy_app(
     startup is handled by the runtime integration once its shared interface
     is in place; this endpoint records the deployment and returns its route.
     """
-    filename = Path(file.filename or "").name
+    filename = file.filename or ""
     suffix = Path(filename).suffix.lower()
     if suffix not in {".py", ".html"}:
         raise HTTPException(status_code=415, detail="Upload a .py or .html file.")
@@ -83,9 +86,7 @@ async def deploy_app(
             status_code=422, detail="The app name must be between 1 and 100 characters."
         )
 
-    source = await _read_limited(file, remaining=MAX_DEPLOYMENT_BYTES)
-    if not source.strip():
-        raise HTTPException(status_code=422, detail="The uploaded app file is empty.")
+    source = await _read_limited(file, limit=MAX_FILE_BYTES)
 
     requirements_bytes: bytes | None = None
     if requirements is not None and requirements.filename:
@@ -100,7 +101,7 @@ async def deploy_app(
                 detail="The optional dependency file must be named requirements.txt.",
             )
         requirements_bytes = await _read_limited(
-            requirements, remaining=MAX_DEPLOYMENT_BYTES - len(source)
+            requirements, limit=MAX_REQUIREMENTS_BYTES
         )
         try:
             requirements_bytes.decode("utf-8")
@@ -116,51 +117,60 @@ async def deploy_app(
         session.add(user)
         session.flush()
 
-    slug = _new_slug(app_name)
-    while session.scalar(select(App.id).where(App.slug == slug)) is not None:
-        slug = _new_slug(app_name)
+    app_record = App(
+        owner_id=user.id,
+        slug=new_unique_slug(session),
+        name=app_name,
+        kind=kind.value,
+    )
+    session.add(app_record)
+    session.flush()
 
-    settings = get_settings()
-    app_dir = settings.data_dir.resolve() / "apps" / slug / "deployments" / "1"
-    created_app_dir = app_dir.parents[1]
-    directory_created = False
+    stored_path: Path | None = None
     try:
-        app_dir.mkdir(parents=True, exist_ok=False)
-        directory_created = True
-        source_path = app_dir / ("index.html" if suffix == ".html" else "app.py")
-        source_path.write_bytes(source)
-        if requirements_bytes is not None:
-            (app_dir / "requirements.txt").write_bytes(requirements_bytes)
-
-        app_record = App(
-            owner_id=user.id,
-            slug=slug,
-            name=app_name,
-            kind=kind.value,
+        stored = save_deployment(
+            app_record.id,
+            1,
+            filename=filename,
+            content=source,
+            requirements=requirements_bytes,
         )
-        session.add(app_record)
-        session.flush()
+        stored_path = stored.path
         session.add(
             Deployment(
                 app_id=app_record.id,
                 version=1,
-                code_path=str(source_path.resolve()),
-                has_requirements=requirements_bytes is not None,
+                code_path=str((stored.path / stored.main_file).resolve()),
+                has_requirements=stored.has_requirements,
             )
         )
         session.commit()
+    except CodeStoreError as exc:
+        session.rollback()
+        if isinstance(exc, FileTooLargeError):
+            status_code = 413
+        elif isinstance(exc, DeploymentExistsError):
+            status_code = 409
+        elif isinstance(
+            exc,
+            (InvalidContentError, InvalidFilenameError, UnsupportedFileTypeError),
+        ):
+            status_code = 422
+        else:
+            status_code = 500
+        raise HTTPException(status_code=status_code, detail=exc.message) from exc
     except Exception:
         session.rollback()
-        if directory_created:
-            shutil.rmtree(created_app_dir, ignore_errors=True)
+        if stored_path is not None:
+            remove_deployment(app_record.id, 1)
         raise
 
-    settings_domain = settings.apps_domain.strip(".")
+    settings_domain = (get_settings().apps_domain or "localhost").strip(".")
     port = request.url.port or 8000
-    url = f"{request.url.scheme}://{slug}.{settings_domain}:{port}"
+    url = f"{request.url.scheme}://{app_record.slug}.{settings_domain}:{port}"
     return {
         "id": app_record.id,
-        "slug": slug,
+        "slug": app_record.slug,
         "name": app_record.name,
         "kind": app_record.kind,
         "status": app_record.status,
