@@ -4,19 +4,20 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.code_store import (
+    MAX_FILE_BYTES,
+    MAX_REQUIREMENTS_BYTES,
     CodeStoreError,
     DeploymentExistsError,
     FileTooLargeError,
     InvalidContentError,
     InvalidFilenameError,
-    MAX_FILE_BYTES,
-    MAX_REQUIREMENTS_BYTES,
     UnsupportedFileTypeError,
     remove_deployment,
     save_deployment,
@@ -59,11 +60,11 @@ def _detect_kind(filename: str, source: bytes) -> AppKind:
 @router.post("/deploy", status_code=201)
 async def deploy_app(
     request: Request,
-    file: UploadFile = File(...),
-    owner_email: str = Form(...),
-    name: str | None = Form(default=None),
-    requirements: UploadFile | None = File(default=None),
-    session: Session = Depends(get_session),
+    file: Annotated[UploadFile, File()],
+    owner_email: Annotated[str, Form()],
+    session: Annotated[Session, Depends(get_session)],
+    name: Annotated[str | None, Form()] = None,
+    requirements: Annotated[UploadFile | None, File()] = None,
 ) -> dict[str, str | int | bool]:
     """Store a Python or HTML deployment and create its app records.
 
@@ -78,7 +79,9 @@ async def deploy_app(
 
     email = owner_email.strip().lower()
     if len(email) > 320 or not _EMAIL_RE.fullmatch(email):
-        raise HTTPException(status_code=422, detail="Enter a valid owner email address.")
+        raise HTTPException(
+            status_code=422, detail="Enter a valid owner email address."
+        )
 
     app_name = (name or Path(filename).stem).strip()
     if not app_name or len(app_name) > 100:
