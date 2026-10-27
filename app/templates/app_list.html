@@ -1,0 +1,21 @@
+{% if apps %}
+<ul class="app-list">
+  {% for app in apps %}
+  <li class="app-card">
+    <div>
+      <h2>{{ app.name }}</h2>
+      <div class="details muted">
+        <span>{{ app.kind }}</span>
+        <span class="status">{{ app.status }}</span>
+      </div>
+    </div>
+    <a href="{{ app.url }}" target="_blank" rel="noopener noreferrer">Open app</a>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<section class="empty-state">
+  <h2>No apps yet</h2>
+  <p class="muted">Your deployed apps will appear here.</p>
+</section>
+{% endif %}

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Your apps · Small Cloud</title>
+    <script
+      src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.11/dist/htmx.min.js"
+      integrity="sha384-2OatzQy1H+Zd/IIrjr1TcuDGqLXeHhbooAyJY1KdQMKnr4LZ22k31GBLdYKHmVjg"
+      crossorigin="anonymous"
+    ></script>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: system-ui, sans-serif;
+        color: #1d2939;
+        background: #f7f9fc;
+      }
+      body { margin: 0; }
+      main { max-width: 900px; margin: 0 auto; padding: 3rem 1.25rem; }
+      header { margin-bottom: 2rem; }
+      h1 { margin: 0 0 .4rem; font-size: 2rem; }
+      .muted { color: #667085; }
+      .app-list { display: grid; gap: 1rem; padding: 0; list-style: none; }
+      .app-card, .empty-state {
+        padding: 1.25rem;
+        border: 1px solid #e4e7ec;
+        border-radius: .75rem;
+        background: #fff;
+      }
+      .app-card { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+      .app-card h2 { margin: 0 0 .35rem; font-size: 1.1rem; }
+      .details { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+      .status { padding: .2rem .55rem; border-radius: 999px; background: #eef2f6; font-size: .85rem; }
+      a { color: #175cd3; font-weight: 600; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      @media (max-width: 600px) {
+        .app-card { align-items: flex-start; flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Your apps</h1>
+        <p class="muted">See the status and open the apps you have deployed.</p>
+      </header>
+
+      <div
+        id="app-list"
+        aria-live="polite"
+        hx-get="/dashboard/apps"
+        hx-trigger="every 10s"
+        hx-swap="innerHTML"
+      >
+        {% include "app_list.html" %}
+      </div>
+    </main>
+  </body>
+</html>
