@@ -11,6 +11,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -35,7 +36,7 @@ from app.friendly_errors import (
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-_FORBIDDEN_WORDS = [
+_FORBIDDEN_SUBSTRINGS = [
     "traceback",
     "stderr",
     "stdout",
@@ -44,18 +45,26 @@ _FORBIDDEN_WORDS = [
     "exit code",
     "container",
     "docker",
-    "oom",
     "sigkill",
     "kernel",
     "stack",
     "segfault",
-    "pid",
     "runtime",
     "modulenotfounderror",
     "syntaxerror",
     "importerror",
     "memoryerror",
     "ai tool",
+    "claude",
+    "chatgpt",
+    "cursor",
+    "copilot",
+]
+
+_FORBIDDEN_WORD_RES = [
+    re.compile(r"\bai\b", re.IGNORECASE),
+    re.compile(r"\boom\b", re.IGNORECASE),
+    re.compile(r"\bpid\b", re.IGNORECASE),
 ]
 
 
@@ -75,9 +84,13 @@ def _assert_output_rules(err: FriendlyError, label: str = "") -> None:
         assert "/" not in value and "\\" not in value, (
             f"{tag} contains slash: {value!r}"
         )
-        for word in _FORBIDDEN_WORDS:
-            assert word not in value.lower(), (
-                f"{tag} contains forbidden word {word!r}: {value!r}"
+        for substr in _FORBIDDEN_SUBSTRINGS:
+            assert substr not in value.lower(), (
+                f"{tag} contains forbidden text {substr!r}: {value!r}"
+            )
+        for pattern in _FORBIDDEN_WORD_RES:
+            assert not pattern.search(value), (
+                f"{tag} contains forbidden word matching {pattern.pattern!r}: {value!r}"
             )
 
     # Title word count: 3 to 8 words
@@ -304,12 +317,28 @@ def test_line_number_out_of_range_gives_none(lineno: int) -> None:
     assert err.line is None
 
 
-def test_line_number_other_file_gives_none() -> None:
-    """6. File annotations for files other than main.py give line=None."""
-    log = '  File "/app/other.py", line 5\n    def (:\nSyntaxError: bad'
+@pytest.mark.parametrize(
+    "filename",
+    ["other_main.py", "domain.py", "xmain.py", "/app/other.py"],
+)
+def test_line_number_other_file_gives_none(filename: str) -> None:
+    """6. File annotations for files other than exactly main.py give line=None."""
+    log = f'  File "{filename}", line 5\n    def (:\nSyntaxError: bad'
     err = classify_failure(log)
     assert err.code == CODE_SYNTAX_ERROR
     assert err.line is None
+
+
+@pytest.mark.parametrize(
+    "main_path",
+    ["/app/main.py", "main.py", "C:\\app\\main.py"],
+)
+def test_line_number_exact_main_py_gives_line(main_path: str) -> None:
+    """6. File annotations ending strictly in main.py give the line number."""
+    log = f'  File "{main_path}", line 15\n    def (:\nSyntaxError: bad'
+    err = classify_failure(log)
+    assert err.code == CODE_SYNTAX_ERROR
+    assert err.line == 15
 
 
 def test_line_number_closest_main_py_wins() -> None:

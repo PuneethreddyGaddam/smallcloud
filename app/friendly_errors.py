@@ -71,9 +71,9 @@ _MODULE_NOT_FOUND_RE: re.Pattern[str] = re.compile(
 )
 
 # Pattern matching the Python traceback File/line annotation for main.py.
-# Matches: File "...main.py", line N    (the quoted path must end with main.py)
+# Matches: File ".../main.py" or File "main.py", line N (filename must be exactly main.py)
 _FILE_LINE_RE: re.Pattern[str] = re.compile(
-    r"""File\s+"[^"]*main\.py",\s+line\s+(\d{1,7})"""
+    r"""File\s+"(?:[^"]*[/\\])?main\.py",\s+line\s+(\d{1,7})"""
 )
 
 # Pattern matching SyntaxError / IndentationError / TabError at start of line.
@@ -173,8 +173,7 @@ def _make_oom(memory_limit_mib: int | None = None) -> FriendlyError:
         title="Your app ran out of memory",
         message=msg,
         suggestion=(
-            "Try loading less data at once, or reduce what the app keeps in memory,"
-            " then deploy again."
+            "Try loading less data at once so the app needs less memory, then deploy again."
         ),
     )
 
@@ -191,7 +190,7 @@ def _make_syntax(line: int | None) -> FriendlyError:
         message=msg,
         suggestion=(
             "Check that line and the lines just above it for a missing bracket, quote or colon,"
-            " then deploy again."
+            " then fix it and deploy again."
         ),
         line=line,
     )
@@ -249,7 +248,7 @@ def _make_unknown() -> FriendlyError:
         title="Your app stopped",
         message="Your app stopped because of a problem we could not identify.",
         suggestion=(
-            "Open the logs for details, or share the last lines with your developer to investigate."
+            "Open the logs to see what went wrong, then change your code and deploy again."
         ),
     )
 
