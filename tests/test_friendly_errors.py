@@ -55,6 +55,7 @@ _FORBIDDEN_WORDS = [
     "syntaxerror",
     "importerror",
     "memoryerror",
+    "ai tool",
 ]
 
 

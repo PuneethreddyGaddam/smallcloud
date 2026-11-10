@@ -173,7 +173,7 @@ def _make_oom(memory_limit_mib: int | None = None) -> FriendlyError:
         title="Your app ran out of memory",
         message=msg,
         suggestion=(
-            "Try loading less data at once, or ask your AI tool to make the app use less memory,"
+            "Try loading less data at once, or reduce what the app keeps in memory,"
             " then deploy again."
         ),
     )
@@ -191,7 +191,7 @@ def _make_syntax(line: int | None) -> FriendlyError:
         message=msg,
         suggestion=(
             "Check that line and the lines just above it for a missing bracket, quote or colon,"
-            " or ask your AI tool to fix the mistake, then deploy again."
+            " then deploy again."
         ),
         line=line,
     )
@@ -249,8 +249,7 @@ def _make_unknown() -> FriendlyError:
         title="Your app stopped",
         message="Your app stopped because of a problem we could not identify.",
         suggestion=(
-            "Open the logs for details, or paste the last lines into your AI tool"
-            " and ask it to fix the problem."
+            "Open the logs for details, or share the last lines with your developer to investigate."
         ),
     )
 
